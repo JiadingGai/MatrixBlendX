@@ -11,10 +11,10 @@
 
 using namespace cute;
 
-__global void gemm_nt_kernel_naive(float *C, const float *A, const float *B, int M, int N, int K) {
-  int r = blockIdx.x, c = blockIdx.y;
+__global__ void gemm_nt_kernel_naive(float *C, const float *A, const float *B, int M, int N, int K) {
+  int row = blockIdx.x, col = blockIdx.y;
   for (int i = 0; i < K; i++) {
-    C[r * N + C] += A[r * K + i] * B[c * K + i];
+    C[row * N + col] += A[row * K + i] * B[col * K + i];
   }
 }
 
