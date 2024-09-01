@@ -1,14 +1,14 @@
 import torch
 from torch.utils.cpp_extension import load
 
-lltm_cpp = load(name="lltm_cpp", sources=["lltm.cpp"])
+blend_cpp = load(name="blend_cpp", sources=["blend.cpp"])
 
 
 M = 128
 N = 256
 K = 1024
 X = torch.randn(M, N)
-y = lltm_cpp.d_sigmoid(X)
+y = blend_cpp.d_sigmoid(X)
 
 # compute gold
 s = torch.sigmoid(X)
