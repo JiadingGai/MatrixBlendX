@@ -84,8 +84,12 @@ std::vector<torch::Tensor> lltm_backward(
   return {d_old_h, d_input, d_weights, d_bias, d_old_cell};
 }
 
+// Definition in matrix_blend.cu
+torch::Tensor gemm_main(torch::Tensor A, torch::Tensor B);
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("forward", &lltm_forward, "LLTM forward");
   m.def("backward", &lltm_backward, "LLTM backward");
   m.def("d_sigmoid", &d_sigmoid, "sigmoid backward");
+  m.def("gemm_main", &gemm_main, "gemm main entry");
 }
