@@ -97,4 +97,3 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("gemm_main_nn_column_major", &gemm_main_nn_column_major, "gemm main entry for GEMM NN column major");
   m.def("flash_apply_mask", &flash_apply_mask, "flash attention's apply_mask");
 }
-}
