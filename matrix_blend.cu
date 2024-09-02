@@ -14,6 +14,60 @@
 
 using namespace cute;
 
+/// Reference: basic_gemm.cu from cutlass
+/// Naive reference GEMM computation.
+__global__ void ReferenceGemm_kernel(
+  int M,
+  int N,
+  int K,
+  float alpha,
+  float const *A,
+  int lda,
+  float const *B,
+  int ldb,
+  float beta,
+  float *C,
+  int ldc) {
+
+  int i = threadIdx.x + blockIdx.x * blockDim.x;
+  int j = threadIdx.y + blockIdx.y * blockDim.y;
+
+  if (i < M && j < N) {
+    float accumulator = 0;
+
+    for (int k = 0; k < K; ++k) {
+      accumulator += A[i + k * lda] * B[k + j * ldb];
+    }
+
+    C[i + j * ldc] = alpha * accumulator + beta * C[i + j * ldc];
+  }
+}
+
+/// Reference GEMM computation.
+cudaError_t ReferenceGemm(
+  int M,
+  int N,
+  int K,
+  float alpha,
+  float const *A,
+  int lda,
+  float const *B,
+  int ldb,
+  float beta,
+  float *C,
+  int ldc) {
+
+  dim3 block(16, 16);
+  dim3 grid(
+    (M + block.x - 1) / block.x,
+    (N + block.y - 1) / block.y
+  );
+
+  ReferenceGemm_kernel<<< grid, block >>>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+
+  return cudaGetLastError();
+}
+
 /// Define a CUTLASS GEMM template and launch a GEMM kernel.
 cudaError_t CutlassSgemmNN(
   int M,
@@ -68,7 +122,7 @@ cudaError_t CutlassSgemmNN(
   //
   // Launch the CUTLASS GEMM kernel.
   //
-  
+
   cutlass::Status status = gemm_operator(args);
 
   //
@@ -109,11 +163,92 @@ torch::Tensor gemm_main(torch::Tensor A, torch::Tensor B) {
   dim3 grid_dim(M, N);
   dim3 block_dim(1);
 
-#if 0
+#if 1
   gemm_nt_kernel_naive<<<grid_dim, block_dim>>>(C_ptr, A_ptr, B_ptr, M, N, K);
-#elif 1
+#elif 0
   //FIXME: CutlassSgemmNN is NN, but you are passing in arguments for NT => numerical error.
   CutlassSgemmNN(M, N, K, /*alpha*/1.0, A_ptr, /*ldA*/M, B_ptr, /*ldB*/N, /*beta*/0.0, C_ptr, /**/M);
 #endif
   return C;
 }
+
+torch::Tensor gemm_main_nn_column_major(torch::Tensor A, torch::Tensor B) {
+  // GEMM_NN with A, B, C column major:
+  // A: M x K column major
+  // B: K x N column major
+  // C: M x N column major
+  auto shape_A = A.sizes();
+  auto shape_B = B.sizes();
+  int M = shape_A[0];
+  int K = shape_A[1];
+  int N = shape_B[1];
+  assert(shape_B[0] == K);
+
+  auto C = torch::zeros({M, N});
+  torch::Device device(torch::kCUDA);
+  C = C.to(device);
+
+  /* float *A_ptr = A.data_ptr<float>(); */
+  /* float *B_ptr = B.data_ptr<float>(); */
+  /* float *C_ptr = C.data_ptr<float>(); */
+  float *A_ptr = reinterpret_cast<float *>(A.data_ptr());
+  float *B_ptr = reinterpret_cast<float *>(B.data_ptr());
+  float *C_ptr = reinterpret_cast<float *>(C.data_ptr());
+
+  dim3 grid_dim(M, N);
+  dim3 block_dim(1);
+
+  int gemm_selector = 1;
+  if (gemm_selector == 0) {
+    gemm_nt_kernel_naive<<<grid_dim, block_dim>>>(C_ptr, A_ptr, B_ptr, M, N, K);
+  } else if (gemm_selector == 1) {
+    //FIXME: CutlassSgemmNN is NN, but you are passing in arguments for NT => numerical error.
+    CutlassSgemmNN(M, N, K, /*alpha*/1.0, A_ptr, /*ldA*/M, B_ptr, /*ldB*/K, /*beta*/0.0, C_ptr, /**/M);
+  } else if (gemm_selector == 2) {
+    ReferenceGemm(M, N, K, /*alpha*/1.0, A_ptr, /*ldA*/M, B_ptr, /*ldB*/K, /*beta*/0.0, C_ptr, /**/M);
+  }
+
+  return C;
+}
+
+template<typename elem_type>
+__global__ void apply_mask_from_flash_attention() {
+  constexpr int kNWarps = 4, kBlockM = 64, kBlockN = 128;
+  using MMA_Atom_Arch = std::conditional_t<
+    std::is_same_v<elem_type, cutlass::half_t>,
+    MMA_Atom<SM80_16x8x16_F32F16F16F32_TN>,
+    MMA_Atom<SM80_16x8x16_F32BF16BF16F32_TN>
+  >;
+  using TiledMma = TiledMMA<
+    MMA_Atom_Arch,
+    Layout<Shape<Int<kNWarps>, _1, _1>>, // 4x1x1 or 8x1x1 thread group
+    Tile<Int<16 * kNWarps>, _16, _16>>;
+
+  TiledMMa tiled_mma;
+  Tensor acc_s = partition_fragment_C(tiled_mma, Shape<Int<kBlockM>, Int<kBlockN>>{}); // (MMA=4, MMA_M, MMA_N)
+
+  printf("\nacc_s:\n");
+  print(acc_s);
+  printf("\n\n");
+  for (int z = 0; z < size<1>(acc_s.layout()); z++) {
+    for (int w = 0; w < size<2>(acc_s.layout()); w++) {
+      for (int x = 0; x < size<0,0>(acc_s.layout()); x++) {
+        for (int y = 0; y < size<0,1>(acc_s.layout()); y++) {
+          printf("%d ", acc_s.layout()(make_coord(make_coord(x, y), z, w)));
+        }
+      }
+      printf("\n");
+    }
+  }
+  printf("\n\n");
+}
+
+torch::Tensor flash_apply_mask(torch::Tensor A) {
+  int M = 64, N = 128;
+  auto C = torch::zeros({M, N});
+  dim3 grid_dim(1);
+  dim3 block_dim(1);
+  apply_mask_from_flash_attention<cutlass::half_t><<<grid_dim, block_dim>>>();
+  return C;
+}
+

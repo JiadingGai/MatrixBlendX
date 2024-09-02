@@ -92,4 +92,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("backward", &lltm_backward, "LLTM backward");
   m.def("d_sigmoid", &d_sigmoid, "sigmoid backward");
   m.def("gemm_main", &gemm_main, "gemm main entry");
+  m.def("gemm_main_nn_column_major", &gemm_main_nn_column_major, "gemm main entry for GEMM NN column major");
+  m.def("flash_apply_mask", &flash_apply_mask, "flash attention's apply_mask");
+}
 }
