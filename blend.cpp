@@ -86,6 +86,8 @@ std::vector<torch::Tensor> lltm_backward(
 
 // Definition in matrix_blend.cu
 torch::Tensor gemm_main(torch::Tensor A, torch::Tensor B);
+torch::Tensor gemm_main_nn_column_major(torch::Tensor A, torch::Tensor B);
+torch::Tensor flash_apply_mask(torch::Tensor A);
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("forward", &lltm_forward, "LLTM forward");

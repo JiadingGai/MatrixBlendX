@@ -224,7 +224,7 @@ __global__ void apply_mask_from_flash_attention() {
     Layout<Shape<Int<kNWarps>, _1, _1>>, // 4x1x1 or 8x1x1 thread group
     Tile<Int<16 * kNWarps>, _16, _16>>;
 
-  TiledMMa tiled_mma;
+  TiledMma tiled_mma;
   Tensor acc_s = partition_fragment_C(tiled_mma, Shape<Int<kBlockM>, Int<kBlockN>>{}); // (MMA=4, MMA_M, MMA_N)
 
   printf("\nacc_s:\n");
