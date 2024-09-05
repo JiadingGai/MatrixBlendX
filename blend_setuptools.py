@@ -66,3 +66,10 @@ for _ in range(100000):
     backward += time.time() - start
 
 print('Forward: {:.3f} s | Backward {:.3f} s'.format(forward, backward))
+
+# sanity test gemm_main
+A = torch.randn(2, 3).cuda()
+B = torch.randn(3, 3).cuda()
+C_gold = A @ B.transpose(0, 1)
+C = blend_cpp.gemm_main(A, B)
+assert(torch.allclose(C, C_gold, rtol=0, atol=1e-02))
