@@ -88,6 +88,7 @@ std::vector<torch::Tensor> lltm_backward(
 torch::Tensor gemm_main(torch::Tensor A, torch::Tensor B);
 torch::Tensor gemm_main_nn_column_major(torch::Tensor A, torch::Tensor B);
 torch::Tensor flash_apply_mask(torch::Tensor A);
+torch::Tensor gemm_universal_f16t_s8n_f16t_mixed_input_tensor_op_f32_sm80(torch::Tensor A, torch::Tensor B, torch::Tensor C);
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("forward", &lltm_forward, "LLTM forward");
@@ -96,4 +97,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("gemm_main", &gemm_main, "gemm main entry");
   m.def("gemm_main_nn_column_major", &gemm_main_nn_column_major, "gemm main entry for GEMM NN column major");
   m.def("flash_apply_mask", &flash_apply_mask, "flash attention's apply_mask");
+  m.def("gemm_universal_f16t_s8n_f16t_mixed_input_tensor_op_f32_sm80", &gemm_universal_f16t_s8n_f16t_mixed_input_tensor_op_f32_sm80, "cutlass mixed type gemm (half_t x int8_t)");
+}
 }

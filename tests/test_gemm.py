@@ -52,6 +52,19 @@ class TestCutlassGemm:
           print("C@max_diff      = ", C[xxx[0][0], xxx[0][1]])
           print('FAILED')
 
+    def test_gemm_mixed_type_0(self):
+      M = 128
+      N = 256
+      K = 1024
+
+      # D = alpha x AB + beta x C
+      A = torch.randn(K, M).to(torch.half).cuda()
+      B = torch.randn(K, N).to(torch.int8).cuda()
+      C = torch.randn(N, 1).to(torch.half).cuda()
+      # FIXME: torch does not support mixed type gemm: D_gold = A.transpose(0,1) @ B + C
+      # FIXME: what are the transpose modes of A, B, and C? are they A: T, B: N, C: T??
+      D = blend_cpp.gemm_universal_f16t_s8n_f16t_mixed_input_tensor_op_f32_sm80(A, B, C)
+
 class TestCute:
     def test_0(self):
       M = 64

@@ -180,6 +180,99 @@ torch::Tensor gemm_main(torch::Tensor A, torch::Tensor B) {
   return C;
 }
 
+//gemm_universal_f16t_s8n_f16t_mixed_input_tensor_op_f32_sm80.cu
+torch::Tensor gemm_universal_f16t_s8n_f16t_mixed_input_tensor_op_f32_sm80(torch::Tensor A, torch::Tensor B, torch::Tensor C) {
+
+  using ElementA = cutlass::half_t;
+  using ElementB = int8_t;
+  using ElementOutput = cutlass::half_t;
+  using ElementAccumulator = float;
+
+  using Gemm = cutlass::gemm::device::GemmUniversal<
+    ElementA,
+    cutlass::layout::RowMajor,
+    ElementB,
+    cutlass::layout::ColumnMajor,
+    ElementOutput,
+    cutlass::layout::RowMajor,
+    ElementAccumulator,
+    cutlass::arch::OpClassTensorOp,
+    cutlass::arch::Sm80,
+    cutlass::gemm::GemmShape<128, 128, 64>,
+    cutlass::gemm::GemmShape<64, 64, 64>,
+    cutlass::gemm::GemmShape<16, 8, 16>,
+      cutlass::epilogue::thread::LinearCombination<
+          ElementOutput, 128 / cutlass::sizeof_bits<ElementOutput>::value,
+          ElementAccumulator, ElementAccumulator>,
+    cutlass::gemm::threadblock::GemmIdentityThreadblockSwizzle<>,
+    4,  // Stages
+    8,  // AlignmentA
+    16, // AlignmentB
+    cutlass::arch::OpMultiplyAddMixedInputUpcast,
+    cutlass::ComplexTransform::kNone,
+    cutlass::ComplexTransform::kNone
+  >;
+
+  auto shape_A = A.sizes();
+  auto shape_B = B.sizes();
+  int K = shape_A[0];
+  int M = shape_A[1];
+  int N = shape_B[1];
+  assert(shape_B[0] == K);
+
+  int lda = K;
+  int ldb = N;
+  int ldc = N;
+  int ldd = N;
+  float alpha = 1.0f, beta = 0.0f;
+
+  // ref: https://pytorch.org/cppdocs/notes/tensor_creation.html
+  auto D_options =
+    torch::TensorOptions()
+      .dtype(torch::kFloat16)
+      .layout(torch::kStrided)
+      .device(torch::kCUDA, 1)
+      .requires_grad(false);
+  auto D = torch::zeros({M, N}, D_options);
+
+  // ref:
+  auto *A_ptr = A.data_ptr<at::Half>();
+  auto *B_ptr = B.data_ptr<int8_t>();
+  auto *C_ptr = C.data_ptr<at::Half>();
+  auto *D_ptr = D.data_ptr<at::Half>();
+
+  // Initialize the GEMM operator
+
+  // ref: cutlass/examples/47_ampere_gemm_universal_streamk
+  cutlass::gemm::GemmCoord problem_size({M, N, K});
+  typename Gemm::Arguments arguments(
+      cutlass::gemm::GemmUniversalMode::kGemm, //universal mode
+      problem_size, // problem_size
+      1, // batch count
+      {
+        ElementAccumulator(alpha),
+        ElementAccumulator(beta)
+      },
+      A_ptr,
+      B_ptr,
+      C_ptr,
+      D_ptr,
+      problem_size.mk().product(), // batch_stride_A
+      problem_size.nk().product(), // batch_stride_B
+      problem_size.mn().product(), // batch_stride_C
+      problem_size.mn().product(), // batch_stride_D
+      lda, // stride_a
+      ldb, // stride_b
+      ldc, // stride_c
+      ldd  // stride_d
+   );
+
+   Gemm gemm_op;
+   auto status = gemm_op();
+   assert(status == cutlass::Status::kSuccess);
+}
+
+
 torch::Tensor gemm_main_nn_column_major(torch::Tensor A, torch::Tensor B) {
   // GEMM_NN with A, B, C column major:
   // A: M x K column major
