@@ -12,6 +12,8 @@
 // Defines cutlass::gemm::device::Gemm, the generic Gemm computation template class.
 #include "cutlass/gemm/device/gemm.h"
 
+#include <nameof.hpp>
+
 using namespace cute;
 
 /// Reference: basic_gemm.cu from cutlass
@@ -152,6 +154,9 @@ torch::Tensor gemm_main(torch::Tensor A, torch::Tensor B) {
   int N = shape_B[0];
   assert(shape_B[1] == K);
 
+  // showcase how to use nameof for type info querying
+  std::cout << "Type of Shape_A is " << nameof::nameof_type<decltype(shape_A)>()  << std::endl;
+
   auto C = torch::zeros({M, N});
   torch::Device device(torch::kCUDA);
   C = C.to(device);
@@ -162,6 +167,9 @@ torch::Tensor gemm_main(torch::Tensor A, torch::Tensor B) {
 
   dim3 grid_dim(M, N);
   dim3 block_dim(1);
+
+  TiledMMA mmaC = make_tiled_mma(UniversalFMA<float, float, float>{}, Layout<Shape<_16, _16, _1>>{});
+  print(size(mmaC));
 
 #if 1
   gemm_nt_kernel_naive<<<grid_dim, block_dim>>>(C_ptr, A_ptr, B_ptr, M, N, K);

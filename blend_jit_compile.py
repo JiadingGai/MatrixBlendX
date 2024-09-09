@@ -4,7 +4,10 @@ from torch.utils.cpp_extension import load
 blend_cpp = load(name="blend_cpp",
                  sources=["blend.cpp", "matrix_blend.cu"],
                  extra_cuda_cflags=['-O2'],
-                 extra_include_paths=['./cutlass/include', './cutlass/tools/util/include'])
+                 extra_include_paths=['./cutlass/include',
+                                      './cutlass/tools/util/include',
+                                      './nameof/include',
+                                      ])
 
 
 M = 128
