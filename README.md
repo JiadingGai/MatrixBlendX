@@ -9,7 +9,7 @@ python blend_jit_compile.py
   Step 2. run test: 
     python blend_setuptools.py 
 
-**Flash attention math**
+***Flash attention math***
 
 Consider $Q$ with a single row block of $Q_1 \in R^{B_r \times d}$: $$Q = \big[Q_1,\big]$$
 and $K^T = \big[K_1^T,\ K_2^T\big] \in R^{d \times 2B_c}$, where $K_i \in R^{B_c \times d}$.
@@ -34,7 +34,10 @@ $$
 
   $P=[P_1,\ P_2] = \text{diag}(l)^{-1} \bigg[e^{S_1-m},\ e^{S_2-m}\bigg] \in R^{B_r \times 2B_c}$
 
-  $O = [P_1,\ P_2] \times [V_1,\ V_2] = \text{diag}(l)^{-1} \bigg[e^{S_1-m} V_1 + e^{S_2-m} V_2 \bigg] \in R^{B_r \times d}$
+  $O = [P_1,\ P_2] \times [V_1,\ V_2] = \text{diag}(l)^{-1} \big(e^{S_1-m} V_1 + e^{S_2-m} V_2 \big) \in R^{B_r \times d}$
+
+* online softmax computes (flash attention):
+
 
 **2D rotary embedding**: 
 * Complex representation:
