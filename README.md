@@ -9,3 +9,4 @@ python blend_jit_compile.py
   Step 2. run test: 
     python blend_setuptools.py 
 
+test math expressions: $\sqrt{3x-1} + (1+x)^2$

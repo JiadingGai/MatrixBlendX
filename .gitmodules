@@ -1,3 +1,6 @@
 [submodule "cutlass"]
 	path = cutlass
 	url = https://github.com/NVIDIA/cutlass.git
+[submodule "nameof"]
+	path = nameof
+	url = https://github.com/Neargye/nameof.git
