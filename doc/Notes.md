@@ -67,6 +67,30 @@ $$
 \Rightarrow \text{cartesian}
 $$
 
+**4D rotary embedding**: 
+* Complex representation:
+
+  
+$$
+\begin{bmatrix}
+  (x_1 + jx_2) \cdot (\text{cos}m\theta_1 + j  \text{sin}m\theta_1) \\
+  (x_3 + jx_4) \cdot (\text{cos}m\theta_2 + j  \text{sin}m\theta_2)  \\
+\end{bmatrix}
+\=
+\begin{bmatrix}
+  (x_1 \cdot \text{cos}m\theta_1 - x_2 \cdot \text{sin}m\theta_1) + j(x_1 \cdot \text{sin}m\theta_1 + x_2 \cdot \text{cos}m\theta_1) \\
+  (x_3 \cdot \text{cos}m\theta_1 - x_4 \cdot \text{sin}m\theta_1) + j(x_3 \cdot \text{sin}m\theta_1 + x_4 \cdot \text{cos}m\theta_1) \\
+\end{bmatrix}
+\xRightarrow[\text{real/imag}]{\text{reshape}}
+\begin{bmatrix}
+  (x_1 \cdot \text{cos}m\theta_1 - x_2 \cdot \text{sin}m\theta_1) \\
+  j(x_1 \cdot \text{sin}m\theta_1 + x_2 \cdot \text{cos}m\theta_1) \\
+  (x_3 \cdot \text{cos}m\theta_1 - x_4 \cdot \text{sin}m\theta_1) \\
+  j(x_3 \cdot \text{sin}m\theta_1 + x_4 \cdot \text{cos}m\theta_1) \\
+\end{bmatrix}
+\Rightarrow \text{cartesian}
+$$
+
   
 ## Cartesian representation:
   
