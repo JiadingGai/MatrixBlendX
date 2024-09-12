@@ -28,37 +28,57 @@ $$
 * online softmax computes (flash attention):
 
 
-**2D rotary embedding**: 
+**4D rotary embedding**: 
 * Complex representation:
-  $$(x_1 + jx_2) \cdot (\text{cos}m\theta_1 + j  \text{sin}m\theta_1)$$
+
+  
+$$
+\begin{bmatrix}
+  (x_1 + jx_2) \cdot (\text{cos}m\theta_1 + j  \text{sin}m\theta_1) \\
+  (x_3 + jx_4) \cdot (\text{cos}m\theta_2 + j  \text{sin}m\theta_2)  \\
+\end{bmatrix}
+$$
+
   
 * Cartesian representation:
   
 $$
 \begin{bmatrix}
-  \text{cos}m\theta_1 & -\text{sin}m\theta_1\\
-  \text{sin}m\theta_1 & \text{cos}m\theta_1
+  \text{cos}m\theta_1 & -\text{sin}m\theta_1 & 0 & 0 \\
+  \text{sin}m\theta_1 & \text{cos}m\theta_1 & 0 & 0  \\
+  0 & 0 & \text{cos}m\theta_2 & -\text{sin}m\theta_2 \\
+  0 & 0 & \text{sin}m\theta_2 & \text{cos}m\theta_2  \\
 \end{bmatrix}
 \begin{bmatrix}
   x_1 \\
-  x_2
+  x_2 \\
+  x_3 \\
+  x_4 \\
 \end{bmatrix}
 \=
 \begin{bmatrix}
   x_1 \\
-  x_2
+  x_2 \\
+  x_3 \\
+  x_4 \\
 \end{bmatrix} \odot 
 \begin{bmatrix} 
    \text{cos}m\theta_1 \\
-   \text{cos}m\theta_1
+   \text{cos}m\theta_1 \\
+   \text{cos}m\theta_2 \\
+   \text{cos}m\theta_2 \\
 \end{bmatrix}
 +
 \begin{bmatrix}
   -x_2 \\
-   x_1 
+   x_1 \\
+  -x_4 \\
+   x_3 \\
 \end{bmatrix} \odot 
 \begin{bmatrix} 
    \text{sin}m\theta_1 \\
-   \text{sin}m\theta_1
+   \text{sin}m\theta_1 \\
+   \text{sin}m\theta_2 \\
+   \text{sin}m\theta_2 \\
 \end{bmatrix}
 $$
