@@ -10,7 +10,7 @@ torch.random.manual_seed(123)
 bs = 10
 nheads = 64
 nheads_k = 8
-seqlen = 1
+seqlen = 7
 hdim = 128
 
 device = 'cpu:0'
@@ -61,10 +61,10 @@ def mini_flash(q1, k1, k2, v1, v2):
     tmp4 = s2 - m2
     tmp5 = torch.exp(tmp4)
 
-    l2 = torch.exp(m1 - m2) * l1 + torch.sum(tmp5, dim=1)
+    l2 = torch.exp(m1 - m2) * l1 + torch.sum(tmp5, dim=1, keepdim=True)
     tmp6 = torch.diag(torch.squeeze(torch.reciprocal(l2), -1))
     P2 = torch.matmul(tmp6, tmp5)
-    O2 = torch.matmul(torch.diag(l2 / l1), O1) + torch.matmul(P2, v2)
+    O2 = torch.matmul(torch.diag(torch.squeeze(l1 / l2, -1)), O1) * torch.exp(m1 - m2) + torch.matmul(P2, v2)
     return O2
 
 out_ = mini_flash(q1, k1, k2, v1, v2)
@@ -75,16 +75,19 @@ Q = q1
 K = torch.concat([k1, k2], dim=0)
 P = torch.matmul(Q, torch.transpose(K, 0, 1))
 tmp7 = P / 11.3137
-tmp8 = tmp7 - torch.max(tmp7, dim=1, keepdim=True).values
+m = torch.max(tmp7, dim=1, keepdim=True).values
+tmp8 = tmp7 - m
 tmp9 = torch.exp(tmp8)
-tmp10 = torch.sum(tmp9, dim=1, keepdim=True)
-S = tmp9 / tmp10
+l = torch.sum(tmp9, dim=1, keepdim=True)
+S = tmp9 / l
 
 V = torch.concat([v1, v2], dim=0)
-O = torch.matmul(S, V)
-print(O)
+out_gold = torch.matmul(S, V)
+print(out_gold)
 
 # compare with flash_attn
 # gold = out_og[8, :, 45, :]
 # print(gold)
 
+assert torch.allclose(out_, out_gold)
+print("PASS.")
