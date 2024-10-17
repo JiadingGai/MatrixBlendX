@@ -14,7 +14,7 @@ seqlen = 7
 hdim = 256
 
 device = 'cpu:0'
-dtype = torch.float
+dtype = torch.float64
 context_seqlen_max = 4096
 decoded_seqlen_max = 512
 
@@ -42,8 +42,8 @@ q1 = q[8, :, 45, :].to(torch.float)
 # in GQA, 1 k head attends to 8 q heads, so the 5th k head attends to the 45th q head
 k1 = Kcontext_cache[0, :128, 5, :].to(torch.float)
 k2 = Kdecode_cache[8, :128, 5, :].to(torch.float)
-v1 = Kcontext_cache[0, :128, 5, :].to(torch.float)
-v2 = Kdecode_cache[8, :128, 5, :].to(torch.float)
+v1 = Vcontext_cache[0, :128, 5, :].to(torch.float)
+v2 = Vdecode_cache[8, :128, 5, :].to(torch.float)
 
 
 # append kv
@@ -101,5 +101,6 @@ print(out_gold)
 # gold = out_og[8, :, 45, :]
 # print(gold)
 
+# assert torch.allclose(out_, out_gold, rtol=1e-08, atol=1e-06)
 assert torch.allclose(out_, out_gold)
 print("PASS.")
