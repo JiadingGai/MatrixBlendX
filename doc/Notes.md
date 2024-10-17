@@ -41,7 +41,7 @@ $l_2 = e^{m_1-m_2} l_1 + \text{rowsum}(e^{S_2-m_2}) = \text{rowsum}(e^{S_1-m}) +
 
 $P_2 = \text{diag}(l_2)^{-1} e^{S_2-m_2} \in R^{B_r \times B_c}$
 
-$O_2 = \text{diag}\bigg(\frac{l_2}{l_1}\bigg)^{-1} \times e^{m_1-m_2} \times O_1 + P_2 \times V_2 \in R^{B_r \times d} = \text{diag}(l_2)^{-1} e^{S_1-m} V_1 + \text{diag}(l_2)^{-1} e^{S_2-m} V_2 = O \in R^{B_r \times d}$
+$O_2 = \text{diag}\bigg(\frac{l_2}{l_1}\bigg)^{-1} e^{m_1-m_2} O_1 + P_2 \times V_2 \in R^{B_r \times d} = \text{diag}(l_2)^{-1} e^{S_1-m} V_1 + \text{diag}(l_2)^{-1} e^{S_2-m} V_2 = O \in R^{B_r \times d}$
 
 
 # 4D rotary embedding
