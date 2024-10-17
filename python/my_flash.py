@@ -38,13 +38,16 @@ k2 = Kdecode_cache[8, :128, 5, :].to(torch.float)
 v1 = Kcontext_cache[0, :128, 5, :].to(torch.float)
 v2 = Kdecode_cache[8, :128, 5, :].to(torch.float)
 
+cache_seqlen_context = 120
+
 # append kv
 k2[-seqlen:, :] = k[8, :, 5, :].to(torch.float)
 v2[-seqlen:, :] = v[8, :, 5, :].to(torch.float)
 
-def mini_flash(q1, k1, k2, v1, v2):
+def mini_flash(q1, k1, k2, v1, v2, cache_seqlen_context):
     # flash attention
     s1 = torch.matmul(q1, torch.transpose(k1, 0, 1)) / 11.3137 # sqrt(128.0) = 11.3137
+    s1[:, cache_seqlen_context:] = float("-Inf") 
     m1 = torch.max(s1, dim=1, keepdim=True).values
     tmp0 = s1 - m1
     tmp1 = torch.exp(tmp0)
@@ -67,12 +70,13 @@ def mini_flash(q1, k1, k2, v1, v2):
     O2 = torch.matmul(torch.diag(torch.squeeze(l1 / l2, -1)), O1) * torch.exp(m1 - m2) + torch.matmul(P2, v2)
     return O2
 
-out_ = mini_flash(q1, k1, k2, v1, v2)
+out_ = mini_flash(q1, k1, k2, v1, v2, cache_seqlen_context)
 print(out_)
 
 # standard attention
 Q = q1
-K = torch.concat([k1, k2], dim=0)
+# K = torch.concat([k1, k2], dim=0)
+K = torch.concat([k1[:cache_seqlen_context, :], k2], dim=0)
 P = torch.matmul(Q, torch.transpose(K, 0, 1))
 tmp7 = P / 11.3137
 m = torch.max(tmp7, dim=1, keepdim=True).values
@@ -81,7 +85,8 @@ tmp9 = torch.exp(tmp8)
 l = torch.sum(tmp9, dim=1, keepdim=True)
 S = tmp9 / l
 
-V = torch.concat([v1, v2], dim=0)
+# V = torch.concat([v1, v2], dim=0)
+V = torch.concat([v1[:cache_seqlen_context, :], v2], dim=0)
 out_gold = torch.matmul(S, V)
 print(out_gold)
 
