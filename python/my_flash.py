@@ -30,7 +30,7 @@ Vcontext_cache = torch.rand([1, context_seqlen_max, nheads_k, hdim], device=devi
 Kdecode_cache = torch.rand([bs, decoded_seqlen_max, nheads_k, hdim], device=device, dtype=dtype)
 Vdecode_cache = torch.rand([bs, decoded_seqlen_max, nheads_k, hdim], device=device, dtype=dtype)
 
-# take a slice from bs = 8 and the 45th q head
+# take a slice from the 8th batch and the 45th q head
 q1 = q[8, :, 45, :].to(torch.float)
 # in GQA, 1 k head attends to 8 q heads, so the 5th k head attends to the 45th q head
 k1 = Kcontext_cache[0, :128, 5, :].to(torch.float)
@@ -39,8 +39,8 @@ v1 = Kcontext_cache[0, :128, 5, :].to(torch.float)
 v2 = Kdecode_cache[8, :128, 5, :].to(torch.float)
 
 # append kv
-k2[-1, :] = k[8, 0, 5, :].to(torch.float)
-v2[-1, :] = v[8, 0, 5, :].to(torch.float)
+k2[-seqlen:, :] = k[8, :, 5, :].to(torch.float)
+v2[-seqlen:, :] = v[8, :, 5, :].to(torch.float)
 
 def mini_flash(q1, k1, k2, v1, v2):
     # flash attention
