@@ -1,5 +1,7 @@
 # Flash attention math
 
+> See my_flash.py under python/ for an implementation of this example.
+
 Consider $Q$ with a single row block of $Q_1 \in R^{B_r \times d}$: $$Q = \big[Q_1,\big]$$
 and $K^T = \big[K_1^T,\ K_2^T\big] \in R^{d \times 2B_c}$, where $K_i \in R^{B_c \times d}$.
 
