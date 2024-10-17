@@ -7,16 +7,23 @@ This script implements the flash attention example in doc/note.md.
 
 torch.random.manual_seed(123)
 
-bs = 10
+bs = 20
 nheads = 64
 nheads_k = 8
 seqlen = 7
-hdim = 128
+hdim = 256
 
 device = 'cpu:0'
 dtype = torch.float
-context_seqlen_max = 3980
+context_seqlen_max = 4096
 decoded_seqlen_max = 512
+
+cache_seqlen_context = 110
+cache_seqlen_decoded = 90
+
+assert seqlen + cache_seqlen_decoded < 128, \
+       "only 2 blocks are supported : one context, one decoded; \
+       num of new tokens will overflow the decoded block > 128."
 
 q = torch.randn([bs, seqlen, nheads, hdim], device=device, dtype=dtype)
 k = torch.randn([bs, seqlen, nheads_k, hdim], device=device, dtype=dtype)
@@ -38,11 +45,10 @@ k2 = Kdecode_cache[8, :128, 5, :].to(torch.float)
 v1 = Kcontext_cache[0, :128, 5, :].to(torch.float)
 v2 = Kdecode_cache[8, :128, 5, :].to(torch.float)
 
-cache_seqlen_context = 120
 
 # append kv
-k2[-seqlen:, :] = k[8, :, 5, :].to(torch.float)
-v2[-seqlen:, :] = v[8, :, 5, :].to(torch.float)
+k2[cache_seqlen_decoded:cache_seqlen_decoded+seqlen, :] = k[8, :, 5, :].to(torch.float)
+v2[cache_seqlen_decoded:cache_seqlen_decoded+seqlen, :] = v[8, :, 5, :].to(torch.float)
 
 def mini_flash(q1, k1, k2, v1, v2, cache_seqlen_context):
     # flash attention
@@ -58,6 +64,7 @@ def mini_flash(q1, k1, k2, v1, v2, cache_seqlen_context):
     O1 = torch.matmul(P1, v1)
 
     s2 = torch.matmul(q1, torch.transpose(k2, 0, 1)) / 11.3137
+    s2[:, cache_seqlen_decoded + seqlen:] = float("-Inf") 
     tmp3 = torch.max(s2, dim=1, keepdim=True).values
     m2 = torch.maximum(m1, tmp3)
 
@@ -76,7 +83,7 @@ print(out_)
 # standard attention
 Q = q1
 # K = torch.concat([k1, k2], dim=0)
-K = torch.concat([k1[:cache_seqlen_context, :], k2], dim=0)
+K = torch.concat([k1[:cache_seqlen_context, :], k2[:cache_seqlen_decoded + seqlen, :]], dim=0)
 P = torch.matmul(Q, torch.transpose(K, 0, 1))
 tmp7 = P / 11.3137
 m = torch.max(tmp7, dim=1, keepdim=True).values
@@ -86,7 +93,7 @@ l = torch.sum(tmp9, dim=1, keepdim=True)
 S = tmp9 / l
 
 # V = torch.concat([v1, v2], dim=0)
-V = torch.concat([v1[:cache_seqlen_context, :], v2], dim=0)
+V = torch.concat([v1[:cache_seqlen_context, :], v2[:cache_seqlen_decoded + seqlen, :]], dim=0)
 out_gold = torch.matmul(S, V)
 print(out_gold)
 
