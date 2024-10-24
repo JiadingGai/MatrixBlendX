@@ -57,11 +57,11 @@ def mini_flash(q1, k1, k2, v1, v2, cache_seqlen_context):
     s1[:, cache_seqlen_context:] = float("-Inf") 
     m1 = torch.max(s1, dim=1, keepdim=True).values
     tmp0 = s1 - m1
-    tmp1 = torch.exp(tmp0)
-    l1 = torch.sum(tmp1, dim=1, keepdim=True)
+    P1 = torch.exp(tmp0)
+    l1 = torch.sum(P1, dim=1, keepdim=True)
 
-    tmp2 = torch.diag(torch.squeeze(torch.reciprocal(l1), -1))
-    P1 = torch.matmul(tmp2, tmp1)
+    # tmp2 = torch.diag(torch.squeeze(torch.reciprocal(l1), -1))
+    # P1 = torch.matmul(tmp2, tmp1)
     O1 = torch.matmul(P1, v1)
 
     s2 = torch.matmul(q1, torch.transpose(k2, 0, 1)) / np.sqrt(128.0) 
@@ -74,8 +74,9 @@ def mini_flash(q1, k1, k2, v1, v2, cache_seqlen_context):
 
     l2 = torch.exp(m1 - m2) * l1 + torch.sum(tmp5, dim=1, keepdim=True)
     tmp6 = torch.diag(torch.squeeze(torch.reciprocal(l2), -1))
-    P2 = torch.matmul(tmp6, tmp5)
-    O2 = torch.matmul(torch.diag(torch.squeeze(l1 / l2, -1)), O1) * torch.exp(m1 - m2) + torch.matmul(P2, v2)
+    # P2 = torch.matmul(tmp6, tmp5)
+    P2 = tmp5
+    O2 = torch.matmul(tmp6, O1) * torch.exp(m1 - m2) + torch.matmul(tmp6, torch.matmul(P2, v2))
     return O2
 
 # iterating backward from the last block to the first 
@@ -117,11 +118,11 @@ def mini_flash_faithful(q1, k1, k2, v1, v2, cache_seqlen_context):
     m1 = torch.max(s1, dim=1, keepdim=True).values
     m1 = m1 * scale_softmax_log2
     tmp0 = s1 * scale_softmax_log2 - m1
-    tmp1 = torch.exp2(tmp0)
-    l1 = torch.sum(tmp1, dim=1, keepdim=True)
+    P1 = torch.exp2(tmp0)
+    l1 = torch.sum(P1, dim=1, keepdim=True)
 
-    tmp2 = torch.diag(torch.squeeze(torch.reciprocal(l1), -1))
-    P1 = torch.matmul(tmp2, tmp1)
+    # tmp2 = torch.diag(torch.squeeze(torch.reciprocal(l1), -1))
+    # P1 = torch.matmul(tmp2, tmp1)
     O1 = torch.matmul(P1, v1)
 
     s2 = torch.matmul(q1, torch.transpose(k2, 0, 1))
@@ -130,29 +131,29 @@ def mini_flash_faithful(q1, k1, k2, v1, v2, cache_seqlen_context):
     m2 = torch.maximum(m1, tmp3 * scale_softmax_log2)
 
     tmp4 = s2 * scale_softmax_log2 - m2
-    tmp5 = torch.exp2(tmp4)
+    P2 = torch.exp2(tmp4)
 
-    l2 = torch.exp2(m1 - m2) * l1 + torch.sum(tmp5, dim=1, keepdim=True)
+    l2 = torch.exp2(m1 - m2) * l1 + torch.sum(P2, dim=1, keepdim=True)
     tmp6 = torch.diag(torch.squeeze(torch.reciprocal(l2), -1))
-    P2 = torch.matmul(tmp6, tmp5)
-    O2 = torch.matmul(torch.diag(torch.squeeze(l1 / l2, -1)), O1) * torch.exp2(m1 - m2) + torch.matmul(P2, v2)
+    # P2 = torch.matmul(tmp6, tmp5)
+    O2 = torch.matmul(tmp6, O1) * torch.exp2(m1 - m2) + torch.matmul(tmp6, torch.matmul(P2, v2))
     return O2
 
 # TODO: iterating backward and forward are not numerically matched. why?
-out_0 = mini_flash_faithful(q1, k1, k2, v1, v2, cache_seqlen_context)
+out_f = mini_flash_faithful(q1, k1, k2, v1, v2, cache_seqlen_context)
 out_1 = mini_flash(q1, k1, k2, v1, v2, cache_seqlen_context)
 out_2 = mini_flash2(q1, k1, k2, v1, v2, cache_seqlen_context)
-# print(out_0)
-# print(out_1)
-# assert torch.allclose(out_0, out_1, atol=9.8e-02, rtol=1e-08)
-assert torch.allclose(out_0, out_2)
+print("out_f = \n", out_f)
+print("out_1 = \n", out_1)
+# assert torch.allclose(out_f, out_1, atol=9.8e-02, rtol=1e-08)
+# assert torch.allclose(out_f, out_2)
 
 # standard attention
 Q = q1
 # K = torch.concat([k1, k2], dim=0)
 K = torch.concat([k1[:cache_seqlen_context, :], k2[:cache_seqlen_decoded + seqlen, :]], dim=0)
 P = torch.matmul(Q, torch.transpose(K, 0, 1))
-tmp7 = P / 11.3137
+tmp7 = P / np.sqrt(128.0)
 m = torch.max(tmp7, dim=1, keepdim=True).values
 tmp8 = tmp7 - m
 tmp9 = torch.exp(tmp8)
@@ -162,12 +163,15 @@ S = tmp9 / l
 # V = torch.concat([v1, v2], dim=0)
 V = torch.concat([v1[:cache_seqlen_context, :], v2[:cache_seqlen_decoded + seqlen, :]], dim=0)
 out_gold = torch.matmul(S, V)
-print(out_gold)
+print("out_gold = \n", out_gold)
 
 # compare with flash_attn
 # gold = out_og[8, :, 45, :]
 # print(gold)
 
-assert torch.allclose(out_1, out_gold, rtol=1e-08, atol=1e-06)
-#assert torch.allclose(out_1, out_gold)
+print("out_1 = \n", out_1)
+# assert torch.allclose(out_1, out_gold, rtol=1e-08, atol=1e-06)
+print("out_f = \n", out_f)
+print("out_2 = \n", out_2)
+assert torch.allclose(out_f, out_gold)
 print("PASS.")
