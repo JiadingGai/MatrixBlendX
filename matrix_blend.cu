@@ -16,6 +16,9 @@
 
 #include <nameof.hpp>
 
+#include <thrust/host_vector.h>
+#include <thrust/device_vector.h>
+
 using namespace cute;
 
 /// Reference: basic_gemm.cu from cutlass
