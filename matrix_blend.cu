@@ -11,6 +11,8 @@
 
 // Defines cutlass::gemm::device::Gemm, the generic Gemm computation template class.
 #include "cutlass/gemm/device/gemm.h"
+#include "cutlass/cutlass.h"
+#include "cutlass/gemm/device/gemm_universal.h"
 
 #include <nameof.hpp>
 

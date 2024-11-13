@@ -99,4 +99,3 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("flash_apply_mask", &flash_apply_mask, "flash attention's apply_mask");
   m.def("gemm_universal_f16t_s8n_f16t_mixed_input_tensor_op_f32_sm80", &gemm_universal_f16t_s8n_f16t_mixed_input_tensor_op_f32_sm80, "cutlass mixed type gemm (half_t x int8_t)");
 }
-}
