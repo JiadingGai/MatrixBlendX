@@ -587,8 +587,8 @@ torch::Tensor sgemm_sm80_from_cute(torch::Tensor A, torch::Tensor B) {
   TI alpha = 1.0;
   TI beta  = 0.0;
 
-  char tranA = 'N';
-  char tranB = 'T';
+  char transA = 'N';
+  char transB = 'T';
 
   std::cout << "M = " << m << std::endl;
   std::cout << "N = " << n << std::endl;
