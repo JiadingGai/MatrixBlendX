@@ -90,6 +90,9 @@ torch::Tensor gemm_main_nn_column_major(torch::Tensor A, torch::Tensor B);
 torch::Tensor flash_apply_mask(torch::Tensor A);
 torch::Tensor gemm_universal_f16t_s8n_f16t_mixed_input_tensor_op_f32_sm80(torch::Tensor A, torch::Tensor B, torch::Tensor C);
 
+// Definition in sgemm_sm80.cu
+torch::Tensor sgemm_sm80_from_cute(torch::Tensor A, torch::Tensor B);
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("forward", &lltm_forward, "LLTM forward");
   m.def("backward", &lltm_backward, "LLTM backward");
@@ -98,4 +101,5 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("gemm_main_nn_column_major", &gemm_main_nn_column_major, "gemm main entry for GEMM NN column major");
   m.def("flash_apply_mask", &flash_apply_mask, "flash attention's apply_mask");
   m.def("gemm_universal_f16t_s8n_f16t_mixed_input_tensor_op_f32_sm80", &gemm_universal_f16t_s8n_f16t_mixed_input_tensor_op_f32_sm80, "cutlass mixed type gemm (half_t x int8_t)");
+  m.def("sgemm_sm80_from_cute", &sgemm_sm80_from_cute, "sgemm_sm80.cu from cutlass");
 }

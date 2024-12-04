@@ -187,7 +187,7 @@ torch::Tensor gemm_main(torch::Tensor A, torch::Tensor B) {
 
 //gemm_universal_f16t_s8n_f16t_mixed_input_tensor_op_f32_sm80.cu
 torch::Tensor gemm_universal_f16t_s8n_f16t_mixed_input_tensor_op_f32_sm80(torch::Tensor A, torch::Tensor B, torch::Tensor C) {
-
+  // D = alpha x AB + beta x C
   using ElementA = cutlass::half_t;
   using ElementB = int8_t;
   using ElementOutput = cutlass::half_t;
@@ -275,6 +275,7 @@ torch::Tensor gemm_universal_f16t_s8n_f16t_mixed_input_tensor_op_f32_sm80(torch:
    Gemm gemm_op;
    auto status = gemm_op();
    assert(status == cutlass::Status::kSuccess);
+   return D;
 }
 
 

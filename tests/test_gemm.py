@@ -9,8 +9,16 @@ from torch.utils.cpp_extension import load
 # this test is usually invoked from the top level dir:
 # pytest -q -s tests/test_gemm.py
 blend_cpp = load(name="blend_cpp",
-                 sources=["blend.cpp", "matrix_blend.cu"],
-                 extra_cuda_cflags=['-O2'],
+                 sources=[
+                     "blend.cpp",
+                     "sgemm_sm80.cu",
+                     "matrix_blend.cu",
+                 ],
+                 extra_cuda_cflags=[
+                     '-O2',
+                     '--keep',
+                     '--verbose',
+                 ],
                  extra_include_paths=['./cutlass/include',
                                       './cutlass/tools/util/include',
                                       './nameof/include',
