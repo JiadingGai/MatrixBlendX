@@ -21,7 +21,7 @@ context_seqlen_max = 8192
 decoded_seqlen_max = 512
 
 cache_seqlen_context = 8192
-cache_seqlen_decoded = torch.randint(low=121, high=121+1, size=(1,), device=device, dtype=torch.int32).repeat(bs)
+cache_seqlen_decoded = torch.randint(low=421, high=421+1, size=(1,), device=device, dtype=torch.int32).repeat(bs)
 seqlen_k_cache = cache_seqlen_context + cache_seqlen_decoded
 
 q = torch.randn([bs, seqlen, nheads, hdim], device=device, dtype=dtype)
@@ -108,9 +108,9 @@ def flash_attention1(q, k, v, Kcache, Vcache, cache_seqlens):
            is_first_blk = True
            kBlockN = 128 # block size for kv blocks
            # FLASH ATTENTION (github) ITERATES THROUGH THE KV BLOCK IN REVERSED ORDER (backwards)
+           # for blk in reversed (range(0, (actual_cache_seqlen + kBlockN - 1) // kBlockN)):
            # THIS RANDOMLY SHUFFLED ITERATION ORDERING PROVES THAT FLASH ATTENTION IS INVARIANT TO THE ORDERING IT ITERATES THROUGH THE KV BLOCKS.
-           #for blk in random.sample((0, (actual_cache_seqlen + kBlockN - 1) // kBlockN), (actual_cache_seqlen + kBlockN - 1) // kBlockN):
-           for blk in reversed (range(0, (actual_cache_seqlen + kBlockN - 1) // kBlockN)):
+           for blk in random.sample(range(0, (actual_cache_seqlen + kBlockN - 1) // kBlockN), (actual_cache_seqlen + kBlockN - 1) // kBlockN):
                # print("head = ", hh, ", blk = ", blk)
                # we don't need to clear K2 since we will mask out the scores
                K2 = torch.full((kBlockN, hdim), float('nan'), device=device, dtype=dtype)
