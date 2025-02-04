@@ -1,30 +1,28 @@
 import torch
-import numpy as np 
+import numpy as np
+import random
 torch.set_printoptions(sci_mode=False)
 
 """
 This script implements the flash attention example in doc/note.md.
 """
-
 torch.random.manual_seed(123)
 
-bs = 20
-nheads = 64
-nheads_k = 8
+bs = 5
+nheads = 32
+nheads_k = 4
 seqlen = 7
-hdim = 256
+hdim = 128
 
 device = 'cpu:0'
-dtype = torch.float64
-context_seqlen_max = 4096
+# device = 'cuda:0'
+dtype = torch. float64
+context_seqlen_max = 8192
 decoded_seqlen_max = 512
 
-cache_seqlen_context = 110
-cache_seqlen_decoded = 90
-
-assert seqlen + cache_seqlen_decoded < 128, \
-       "only 2 blocks are supported : one context, one decoded; \
-       num of new tokens will overflow the decoded block > 128."
+cache_seqlen_context = 8192
+cache_seqlen_decoded = torch.randint(low=121, high=121+1, size=(1,), device=device, dtype=torch.int32).repeat(bs)
+seqlen_k_cache = cache_seqlen_context + cache_seqlen_decoded
 
 q = torch.randn([bs, seqlen, nheads, hdim], device=device, dtype=dtype)
 k = torch.randn([bs, seqlen, nheads_k, hdim], device=device, dtype=dtype)
@@ -38,140 +36,210 @@ Vcontext_cache = torch.rand([1, context_seqlen_max, nheads_k, hdim], device=devi
 Kdecode_cache = torch.rand([bs, decoded_seqlen_max, nheads_k, hdim], device=device, dtype=dtype)
 Vdecode_cache = torch.rand([bs, decoded_seqlen_max, nheads_k, hdim], device=device, dtype=dtype)
 
-# take a slice from the 8th batch and the 45th q head
-q1 = q[8, :, 45, :].to(torch.float)
-# in GQA, 1 k head attends to 8 q heads, so the 5th k head attends to the 45th q head
-k1 = Kcontext_cache[0, :128, 5, :].to(torch.float)
-k2 = Kdecode_cache[8, :128, 5, :].to(torch.float)
-v1 = Vcontext_cache[0, :128, 5, :].to(torch.float)
-v2 = Vdecode_cache[8, :128, 5, :].to(torch.float)
+# append kv to decode_cache
+seqlen_knew = seqlen
+for xxx in range(0, bs):
+    Kdecode_cache[xxx, cache_seqlen_decoded[xxx] : cache_seqlen_decoded [xxx] + seqlen_knew, :, :] = k[xxx, :, :, :]
+    Vdecode_cache[xxx, cache_seqlen_decoded[xxx] : cache_seqlen_decoded [xxx] + seqlen_knew, :, :] = v[xxx, :, :, :]
+Kcache_tmp = torch.concat((Kcontext_cache [:,:cache_seqlen_context, :,:].repeat([bs, 1, 1, 1]), Kdecode_cache), dim=1)
+Vcache_tmp = torch.concat((Vcontext_cache [:,:cache_seqlen_context, :,:].repeat([bs, 1, 1, 1]), Vdecode_cache), dim=1)
+Kcache = torch.randn([bs, context_seqlen_max+decoded_seqlen_max, nheads_k, hdim], device=device, dtype=dtype)
+Vcache = torch.randn([bs, context_seqlen_max+decoded_seqlen_max, nheads_k, hdim], device=device, dtype=dtype)
+Kcache[:, :cache_seqlen_context + decoded_seqlen_max, :, :]= Kcache_tmp
+Vcache[:, :cache_seqlen_context + decoded_seqlen_max, :, :]= Vcache_tmp
+
+def standard_attention(q, k, v, Kcache, Vcache, cache_seqlens):
+    output = torch.zeros_like(q)
+    # Append kv
+    bs = q.shape[0]
+    seqlen_knew = q.shape[1]
+    nheads = q.shape[2]
+    nheads_kv=k.shape[2]
+    gqa_factor = nheads // nheads_kv
+
+    # for each batch size
+    for xxx in range(0, bs):
+        Kcache[xxx, cache_seqlens[xxx]: cache_seqlens[xxx] + seqlen_knew, :, :] = k[xxx, :, :, :]
+        Vcache[xxx, cache_seqlens[xxx]: cache_seqlens[xxx] + seqlen_knew, :, :] = v[xxx, :, :, :]
+
+        K = Kcache[xxx, :cache_seqlens[xxx] + seqlen_knew, :, :]
+        V = Vcache[xxx, :cache_seqlens[xxx] + seqlen_knew, :, :]
+        # for each q heads
+        for hh in range (0, nheads):
+            q1 = q[xxx, :, hh, :]
+            K1 = K[:, hh // gqa_factor, :]
+            V1 = V[:, hh // gqa_factor, :]
+            p1 = torch.matmul(q1, torch.transpose(K1, 0, 1))
+            tmp7 = p1 / np.sqrt(float(hdim))
+            m = torch.max(tmp7, dim=1, keepdim=True).values
+            tmp8 = tmp7 - m
+            tmp9= torch.exp(tmp8)
+            l = torch.sum(tmp9, dim=1, keepdim=True)
+            S = tmp9 / l
+            O = torch.matmul(S, V1)
+            output [xxx, :, hh, :] = O
+    return output
+
+def flash_attention1(q, k, v, Kcache, Vcache, cache_seqlens):
+    output = torch. zeros_like(q)
+    # Append kv
+    bs = q.shape[0]
+    seqlen_knew = q.shape[1]
+    nheads = q.shape[2]
+    nheads_kv=k.shape[2]
+    gqa_factor = nheads // nheads_kv
+    # for each batch size
+    for xxx in range(0, bs):
+        Kcache [xxx, cache_seqlens [xxx]: cache_seqlens [xxx] + seqlen_knew, :, :] = k[xxx, :, :, :]
+        Vcache [xxx, cache_seqlens [xxx]: cache_seqlens [xxx] + seqlen_knew, :, :] = v[xxx, :, :, :]
+        K = Kcache[xxx, :cache_seqlens [xxx] + seqlen_knew, :, :]
+        V = Vcache [xxx, :cache_seqlens [xxx] + seqlen_knew, :, :]
+        actual_cache_seqlen = cache_seqlens [xxx] + seqlen_knew
+        # for each q heads
+        for hh in range(0, nheads):
+           q1 = q[xxx, :, hh, :]
+           K1 = K[:, hh // gqa_factor, :]
+           V1 = V[:, hh // gqa_factor, :]
+
+           #Initialize m, 1, and 0
+           m = torch.full((seqlen_knew, 1), float('-inf'), device=device)
+           l = torch.full((seqlen_knew, 1), float('0.0'), device=device)
+           O = torch.full((seqlen_knew, hdim), float('0.0'), device=device)
+           is_first_blk = True
+           kBlockN = 128 # block size for kv blocks
+           # FLASH ATTENTION (github) ITERATES THROUGH THE KV BLOCK IN REVERSED ORDER (backwards)
+           # THIS RANDOMLY SHUFFLED ITERATION ORDERING PROVES THAT FLASH ATTENTION IS INVARIANT TO THE ORDERING IT ITERATES THROUGH THE KV BLOCKS.
+           #for blk in random.sample((0, (actual_cache_seqlen + kBlockN - 1) // kBlockN), (actual_cache_seqlen + kBlockN - 1) // kBlockN):
+           for blk in reversed (range(0, (actual_cache_seqlen + kBlockN - 1) // kBlockN)):
+               # print("head = ", hh, ", blk = ", blk)
+               # we don't need to clear K2 since we will mask out the scores
+               K2 = torch.full((kBlockN, hdim), float('nan'), device=device, dtype=dtype)
+               # we do need to set V2 to 0.0 as other P x V2 would produce all nans
+               V2= torch.full((kBlockN, hdim), float('0.0'), device=device, dtype=dtype)
+               if actual_cache_seqlen - blk * kBlockN < kBlockN:
+                   K2[:actual_cache_seqlen - blk * kBlockN, :] = K1 [blk * kBlockN: (blk + 1) * kBlockN, :]
+                   V2[:actual_cache_seqlen - blk * kBlockN, :] = V1 [blk * kBlockN: (blk + 1) * kBlockN, :]
+               else:
+                   K2 = K1[blk * kBlockN: (blk + 1) * kBlockN, :]
+                   V2 = V1[blk * kBlockN: (blk + 1) * kBlockN, :]
+
+               S = torch.matmul(q1, torch.transpose(K2, 0, 1)) / np.sqrt(float (hdim))
+
+               if actual_cache_seqlen - blk * kBlockN <kBlockN:
+                  # Need to apply padding mask
+                  S[:, actual_cache_seqlen - blk * kBlockN: ] = float("-Inf")
+
+               m_prev = m
+               m = torch.maximum (m_prev, torch.max(S, dim=1, keepdim=True).values)
+               tmp0= S - m
+               P = torch.exp(tmp0)
+               if is_first_blk:
+                   l = torch.sum (P, dim=1, keepdim=True)
+                   O = torch.matmul (P, V2)
+                   is_first_blk = False
+               else:
+                   l = torch.exp(m_prev - m) * l + torch. sum (P, dim=1, keepdim=True)
+                   O = O * torch.exp(m_prev - m) + torch.matmul (P, V2)
+
+           tmp6 = torch.diag(torch.squeeze(torch.reciprocal(l), -1))
+           O = torch.matmul(tmp6, O)
+           output [xxx, :, hh, :] = O
+    return output
+
+def branched_flash_attention (q, k, v, Kcontext_cache, Vcontext_cache, Kdecode_cache, Vdecode_cache, cache_seqlen_context, cache_seqlen_decoded):
+    output = torch. zeros_like(q)
+    # Append kv
+    bs = q.shape[0]
+    seqlen_knew = q.shape[1]
+    nheads= q.shape[2]
+    nheads_kv=k.shape[2]
+    gqa_factor = nheads // nheads_kv
 
 
-# append kv
-k2[cache_seqlen_decoded:cache_seqlen_decoded+seqlen, :] = k[8, :, 5, :].to(torch.float)
-v2[cache_seqlen_decoded:cache_seqlen_decoded+seqlen, :] = v[8, :, 5, :].to(torch.float)
+    # for each batch size
+    for xxx in range(0, bs):
+        Kdecode_cache[xxx, cache_seqlen_decoded [xxx]: cache_seqlen_decoded [xxx] + seqlen_knew, :, :] = k[xxx, :, :, :]
+        Vdecode_cache[xxx, cache_seqlen_decoded [xxx]: cache_seqlen_decoded [xxx] + seqlen_knew, :, :] = v[xxx, :, :, :]
+        K = Kdecode_cache[xxx, :cache_seqlen_decoded [xxx] + seqlen_knew, :, :]
+        V = Vdecode_cache[xxx, :cache_seqlen_decoded [xxx] + seqlen_knew, :, :]
+        actual_cache_seqlen_decoded = cache_seqlen_decoded [xxx] + seqlen_knew
+        # for each q heads
+        for hh in range(0, nheads):
+            q1 = q[xxx, :, hh, :]
+            K1_decoded = K[:, hh // gqa_factor, :]
+            V1_decoded = V[:, hh // gqa_factor, :]
+            K1_context = Kcontext_cache [0, :, hh // gqa_factor, :]
+            V1_context = Vcontext_cache [0, :, hh // gqa_factor, :]
+            # Initialize m, l, and O
+            m = torch.full((seqlen_knew, 1), float('-inf'), device=device)
+            l = torch.full((seqlen_knew, 1), float('0.0'), device=device)
+            O = torch. full((seqlen_knew, hdim), float('0.0'), device=device)
+            is_first_blk = True
+            kBlockN = 128 # block size for kv blocks
+            for blk in range(0, (cache_seqlen_context + kBlockN -1) // kBlockN + (actual_cache_seqlen_decoded + kBlockN - 1) // kBlockN):
+                # print("head = ", hh, ", blk = ", blk)
+                # we don't need to clear K2 since we will mask out the scores
+                K2 = torch. full((kBlockN, hdim), float('nan'), device=device, dtype=dtype)
+                # we do need to set V2 to 0.0 as other P x V2 would produce all nans
+                V2 = torch. full((kBlockN, hdim), float('0.0'), device=device, dtype=dtype)
+                if blk < (cache_seqlen_context + kBlockN - 1) // kBlockN:
+                    # load kv block from context kv cache.
+                    if cache_seqlen_context - blk * kBlockN < kBlockN:
+                      K2[:cache_seqlen_context - blk * kBlockN, :] = K1_context[blk * kBlockN : blk * kBlockN + cache_seqlen_context - blk * kBlockN, :]
+                      V2[:cache_seqlen_context - blk * kBlockN, :] = V1_context[blk * kBlockN : blk * kBlockN + cache_seqlen_context - blk * kBlockN, :]
+                    else:
+                      K2 = K1_context[blk * kBlockN : (blk + 1) * kBlockN, :]
+                      V2 = V1_context[blk * kBlockN : (blk + 1) * kBlockN, :]
+                else:
+                      # load kv block from decoded kv cache
+                      if actual_cache_seqlen_decoded - blk * kBlockN < kBlockN:
+                          K2 [:actual_cache_seqlen_decoded - blk * kBlockN, :] = K1_decoded [blk * kBlockN : blk * kBlockN + actual_cache_seqlen_decoded - blk * kBlockN, :]
+                          V2 [:actual_cache_seqlen_decoded - blk * kBlockN, :] = V1_decoded [blk * kBlockN : blk * kBlockN + actual_cache_seqlen_decoded - blk * kBlockN, :]
+                      else:
+                          K2 = K1_decoded[blk * kBlockN : (blk + 1) * kBlockN, :]
+                          V2 = V1_decoded[blk * kBlockN : (blk + 1) * kBlockN, :]
+                S = torch.matmul(q1, torch. transpose(K2, 0, 1)) / np. sqrt (float (hdim))
+                if (blk >= (cache_seqlen_context + kBlockN - 1) // kBlockN) and (actual_cache_seqlen_decoded - blk * kBlockN < kBlockN):
+                    # Need to apply decoded padding mask
+                    S[:, actual_cache_seqlen_decoded - blk * kBlockN:] = float ("-Inf")
+                elif (blk < (cache_seqlen_context + kBlockN - 1) // kBlockN) and (cache_seqlen_context - blk * kBlockN< kBlockN):
+                    # Need to apply context padding mask
+                    S[:, cache_seqlen_context - blk * kBlockN:] = float("-Inf")
 
-def mini_flash(q1, k1, k2, v1, v2, cache_seqlen_context):
-    # flash attention
-    s1 = torch.matmul(q1, torch.transpose(k1, 0, 1)) / np.sqrt(128.0)
-    s1[:, cache_seqlen_context:] = float("-Inf") 
-    m1 = torch.max(s1, dim=1, keepdim=True).values
-    tmp0 = s1 - m1
-    P1 = torch.exp(tmp0)
-    l1 = torch.sum(P1, dim=1, keepdim=True)
+                m_prev = m
+                m = torch.maximum(m_prev, torch.max(S, dim=1, keepdim=True). values)
+                tmp0 = S - m
+                P = torch.exp(tmp0)
+                if is_first_blk:
+                   l = torch. sum(P, dim=1, keepdim=True)
+                   O = torch.matmul(P, V2)
+                   is_first_blk = False
+                else:
+                   l = torch.exp(m_prev - m) * l + torch.sum(P, dim=1, keepdim=True)
+                   O = O * torch.exp(m_prev - m) + torch.matmul (P, V2)
 
-    # tmp2 = torch.diag(torch.squeeze(torch.reciprocal(l1), -1))
-    # P1 = torch.matmul(tmp2, tmp1)
-    O1 = torch.matmul(P1, v1)
+            tmp6 = torch. diag (torch. squeeze (torch. reciprocal (l), -1))
+            O = torch.matmul (tmp6, O)
+            output [xxx, :, hh, :] = O
+    return output
 
-    s2 = torch.matmul(q1, torch.transpose(k2, 0, 1)) / np.sqrt(128.0) 
-    s2[:, cache_seqlen_decoded + seqlen:] = float("-Inf") 
-    tmp3 = torch.max(s2, dim=1, keepdim=True).values
-    m2 = torch.maximum(m1, tmp3)
+out_ba = branched_flash_attention(q, k, v, Kcontext_cache, Vcontext_cache, Kdecode_cache, Vdecode_cache, cache_seqlen_context, cache_seqlen_decoded)
+print ("out_ba = \n", out_ba[3, :1, 15, :])
+out_fa = flash_attention1(q, k, v, Kcache, Vcache, seqlen_k_cache)
+print ("out_fa = \n", out_fa[3, :1, 15, :])
+out_gold = standard_attention(q, k, v, Kcache, Vcache, seqlen_k_cache)
+print ("out_gold = \n", out_gold[3, : 1, 15, :])
+def check_results(out_a, out_b) :
+    assert len(out_a.shape) == 4
+    assert len(out_b.shape) == 4
+    # compare with flash_attn
+    diff = (out_a - out_b). abs ()
+    xxx = torch.argwhere(diff>=diff.max())
+    print("out_a@max_diff =", out_a[xxx[0][0], xxx[0][1], xxx[0][2], xxx[0][3]])
+    print("out_b@max_diff =", out_b[xxx[0][0], xxx[0][1], xxx[0][2], xxx[0][3]])
+    assert torch.allclose(out_a, out_b, rtol=1e-08, atol=9.8e-04)
+    print ("PASS.")
 
-    tmp4 = s2 - m2
-    tmp5 = torch.exp(tmp4)
+check_results (out_ba, out_gold)
+# check_results (out_fa, out_gold)
 
-    l2 = torch.exp(m1 - m2) * l1 + torch.sum(tmp5, dim=1, keepdim=True)
-    tmp6 = torch.diag(torch.squeeze(torch.reciprocal(l2), -1))
-    # P2 = torch.matmul(tmp6, tmp5)
-    P2 = tmp5
-    O2 = torch.matmul(tmp6, O1) * torch.exp(m1 - m2) + torch.matmul(tmp6, torch.matmul(P2, v2))
-    return O2
-
-# iterating backward from the last block to the first 
-def mini_flash2(q1, k1, k2, v1, v2, cache_seqlen_context):
-    # flash attention
-    s1 = torch.matmul(q1, torch.transpose(k1, 0, 1)) / np.sqrt(128.0)
-    s1[:, cache_seqlen_decoded + seqlen:] = float("-Inf") 
-    m1 = torch.max(s1, dim=1, keepdim=True).values
-    tmp0 = s1 - m1
-    tmp1 = torch.exp(tmp0)
-    l1 = torch.sum(tmp1, dim=1, keepdim=True)
-
-    tmp2 = torch.diag(torch.squeeze(torch.reciprocal(l1), -1))
-    P1 = torch.matmul(tmp2, tmp1)
-    O1 = torch.matmul(P1, v1)
-
-    s2 = torch.matmul(q1, torch.transpose(k2, 0, 1)) / np.sqrt(128.0) 
-    s2[:, cache_seqlen_context:] = float("-Inf") 
-    tmp3 = torch.max(s2, dim=1, keepdim=True).values
-    m2 = torch.maximum(m1, tmp3)
-
-    tmp4 = s2 - m2
-    tmp5 = torch.exp(tmp4)
-
-    l2 = torch.exp(m1 - m2) * l1 + torch.sum(tmp5, dim=1, keepdim=True)
-    tmp6 = torch.diag(torch.squeeze(torch.reciprocal(l2), -1))
-    P2 = torch.matmul(tmp6, tmp5)
-    O2 = torch.matmul(torch.diag(torch.squeeze(l1 / l2, -1)), O1) * torch.exp(m1 - m2) + torch.matmul(P2, v2)
-    return O2
-
-# faithful simulator of flash_fwd_kernel.h
-def mini_flash_faithful(q1, k1, k2, v1, v2, cache_seqlen_context):
-    # flash attention
-    scale_softmax_log2 = np.log2(np.exp(1)) / np.sqrt(128)
-
-    # iterate backwards from last block to first
-    s1 = torch.matmul(q1, torch.transpose(k1, 0, 1))
-    s1[:, cache_seqlen_decoded + seqlen:] = float("-Inf") 
-    m1 = torch.max(s1, dim=1, keepdim=True).values
-    m1 = m1 * scale_softmax_log2
-    tmp0 = s1 * scale_softmax_log2 - m1
-    P1 = torch.exp2(tmp0)
-    l1 = torch.sum(P1, dim=1, keepdim=True)
-
-    # tmp2 = torch.diag(torch.squeeze(torch.reciprocal(l1), -1))
-    # P1 = torch.matmul(tmp2, tmp1)
-    O1 = torch.matmul(P1, v1)
-
-    s2 = torch.matmul(q1, torch.transpose(k2, 0, 1))
-    s2[:, cache_seqlen_context:] = float("-Inf") 
-    tmp3 = torch.max(s2, dim=1, keepdim=True).values
-    m2 = torch.maximum(m1, tmp3 * scale_softmax_log2)
-
-    tmp4 = s2 * scale_softmax_log2 - m2
-    P2 = torch.exp2(tmp4)
-
-    l2 = torch.exp2(m1 - m2) * l1 + torch.sum(P2, dim=1, keepdim=True)
-    tmp6 = torch.diag(torch.squeeze(torch.reciprocal(l2), -1))
-    # P2 = torch.matmul(tmp6, tmp5)
-    O2 = torch.matmul(tmp6, O1) * torch.exp2(m1 - m2) + torch.matmul(tmp6, torch.matmul(P2, v2))
-    return O2
-
-# TODO: iterating backward and forward are not numerically matched. why?
-out_f = mini_flash_faithful(q1, k1, k2, v1, v2, cache_seqlen_context)
-out_1 = mini_flash(q1, k1, k2, v1, v2, cache_seqlen_context)
-out_2 = mini_flash2(q1, k1, k2, v1, v2, cache_seqlen_context)
-print("out_f = \n", out_f)
-print("out_1 = \n", out_1)
-# assert torch.allclose(out_f, out_1, atol=9.8e-02, rtol=1e-08)
-# assert torch.allclose(out_f, out_2)
-
-# standard attention
-Q = q1
-# K = torch.concat([k1, k2], dim=0)
-K = torch.concat([k1[:cache_seqlen_context, :], k2[:cache_seqlen_decoded + seqlen, :]], dim=0)
-P = torch.matmul(Q, torch.transpose(K, 0, 1))
-tmp7 = P / np.sqrt(128.0)
-m = torch.max(tmp7, dim=1, keepdim=True).values
-tmp8 = tmp7 - m
-tmp9 = torch.exp(tmp8)
-l = torch.sum(tmp9, dim=1, keepdim=True)
-S = tmp9 / l
-
-# V = torch.concat([v1, v2], dim=0)
-V = torch.concat([v1[:cache_seqlen_context, :], v2[:cache_seqlen_decoded + seqlen, :]], dim=0)
-out_gold = torch.matmul(S, V)
-print("out_gold = \n", out_gold)
-
-# compare with flash_attn
-# gold = out_og[8, :, 45, :]
-# print(gold)
-
-print("out_1 = \n", out_1)
-# assert torch.allclose(out_1, out_gold, rtol=1e-08, atol=1e-06)
-print("out_f = \n", out_f)
-print("out_2 = \n", out_2)
-assert torch.allclose(out_f, out_gold)
-print("PASS.")
