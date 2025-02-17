@@ -111,3 +111,9 @@ $$
    \text{sin}m\theta_2 \\
 \end{bmatrix}
 $$
+
+## Annotation to https://cudaforfun.substack.com/p/outperforming-cublas-on-h100-a-worklog
+
+<p align="center">
+  <img src="./images/outperforming_cublas_on_h100/fast_cu_matmul_1.drawio.svg" alt="fast_cu_matmul_1.drawio.svg" height="300"/>
+</p>
