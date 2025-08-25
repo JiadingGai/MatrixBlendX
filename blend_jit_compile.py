@@ -52,5 +52,8 @@ check_allclose(C, C_gold)
 
 print("========== sgemm_sm80 ===========")
 C = blend_cpp.sgemm_sm80_from_cute(A, B);
+print(f"{M=}, {N=}, {K=}, {C_gold.shape=}")
+print(f"{C.shape=}")
+print(f"{C[0,0]=}, {C_gold[0,0]=}")
 check_allclose(C, C_gold)
 

@@ -566,68 +566,53 @@ int main(int argc, char** argv)
   return 0;
 }
 
-// FIXME: appended the torch driver at the end
-#include <torch/types.h>
+#include <torch/extension.h>
 #include <ATen/ATen.h>
+#include <c10/cuda/CUDAStream.h>
+#include <iostream>
 
 torch::Tensor sgemm_sm80_from_cute(torch::Tensor A, torch::Tensor B) {
-  auto shape_A = A.sizes();
-  auto shape_B = B.sizes();
-  //FIXME: careful about the layout
-  int m = shape_A[0];
-  int k = shape_A[1];
-  int n = shape_B[0];
-  assert(shape_B[1] == k);
+  TORCH_CHECK(A.is_cuda() && B.is_cuda(), "tensors must be CUDA");
+  TORCH_CHECK(A.dtype()==torch::kFloat32 && B.dtype()==torch::kFloat32, "float32 only");
+  TORCH_CHECK(A.dim()==2 && B.dim()==2, "2D only");
 
-  using TA = float;
-  using TB = float;
-  using TC = float;
-  using TI = float;
+  const int m = A.size(0);
+  const int k = A.size(1);
+  TORCH_CHECK(B.size(0) == /*N*/ B.size(0), ""); // just to quiet linters
+  TORCH_CHECK(B.size(1) == k, "B must have shape (N, K)");
+  const int n = B.size(0);
 
-  TI alpha = 1.0;
-  TI beta  = 0.0;
+  A = A.contiguous();  // (M,K) row-major
+  B = B.contiguous();  // (N,K) row-major
 
-  char transA = 'N';
-  char transB = 'T';
+  // Column-major output buffer (ldC = m)
+  auto C_cm = torch::empty_strided({m, n}, {1, m}, A.options());
 
-  std::cout << "M = " << m << std::endl;
-  std::cout << "N = " << n << std::endl;
-  std::cout << "K = " << k << std::endl;
-  std::cout << "C = A^" << transA << " B^" << transB << std::endl;
+  float* A_ptr = A.data_ptr<float>();
+  float* B_ptr = B.data_ptr<float>();
+  float* C_ptr = C_cm.data_ptr<float>();
 
-  int ldA = 0, ldB = 0, ldC = m;
+  // Use the TN path (your dispatcher calls gemm_tn for 'T','N')
+  const char transA = 'T';
+  const char transB = 'N';
 
-  if (transA == 'N') {
-    ldA = m;
-  } else if (transA == 'T') {
-    ldA = k;
-  } else {
-    assert(false);
-  }
+  const int ldA = k;  // row-major (M,K)
+  const int ldB = k;  // row-major (N,K)  <-- NOTE: cols = K
+  const int ldC = m;  // column-major (M,N)
 
-  if (transB == 'N') {
-    ldB = k;
-  } else if (transB == 'T') {
-    ldB = n;
-  } else {
-    assert(false);
-  }
+  auto stream_obj = c10::cuda::getCurrentCUDAStream();
+  cudaStream_t stream = stream_obj.stream();
 
-  auto C =  torch::zeros({m, n});
-  torch::Device device(torch::kCUDA);
-  C = C.to(device);
-
-  float *A_ptr = A.data_ptr<float>();
-  float *B_ptr = B.data_ptr<float>();
-  float *C_ptr = C.data_ptr<float>();
-  
   gemm(transA, transB, m, n, k,
-       alpha,
+       1.0f,
        A_ptr, ldA,
        B_ptr, ldB,
-       beta,
+       0.0f,
        C_ptr, ldC,
-       /*stream*/ 0);
+       stream);
 
-  return C;
+  CUTE_CHECK_LAST();
+  return C_cm.contiguous();  // return row-major (M,N)
 }
+
+
