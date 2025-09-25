@@ -43,6 +43,22 @@ $P_2 = \text{diag}(l_2)^{-1} e^{S_2-m_2} \in R^{B_r \times B_c}$
 
 $O_2 = \text{diag}\bigg(\frac{l_2}{l_1}\bigg)^{-1} e^{m_1-m_2} O_1 + P_2 \times V_2 \in R^{B_r \times d} = \text{diag}(l_2)^{-1} e^{S_1-m} V_1 + \text{diag}(l_2)^{-1} e^{S_2-m} V_2 = O \in R^{B_r \times d}$
 
+## Flash Attention FLOPS and Memory Complexity
+
+> Same leading FLOPs as standard dense attention; FA reduces memory IO from quadratic in \(N\) to linear in \(N\).  
+> (Causal masks change constants only, e.g., ~½ FLOPs.)
+
+FA FLOPS Complexity: $\Theta(B\ H\ N^2\ D)$
+
+FA Memory Complexity: $\Theta(B\ H\ N\ D)$
+
+B: batch size
+
+H: number of heads
+
+N: sequence length
+
+D: model hidden dim
 
 # 4D rotary embedding
 
