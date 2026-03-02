@@ -1,4 +1,6 @@
-add explanation to your plotThis diagram visualizes the "Temporal vs. Spatial" separation that dictates why your registers are shattered into that specific Quad-strided pattern.
+This diagram visualizes the "Temporal vs. Spatial" separation that dictates why the registers are shattered into that specific Quad-strided pattern.
+
+Note that Warp is the atomic unit of instruction issue and control-flow on H200; lanes (threads) are the per-element participants controlled by the active mask and predication, not independently scheduled entities.
 
 ### 1. The Quad-Strided Register File (Left)
 
@@ -27,4 +29,6 @@ This is the most critical part of the "Why."
 
 When you use `ldmatrix.trans`, the hardware is essentially pre-arranging the data into these "Phase 1" and "Phase 2" buckets. By the time the Micro-sequencer starts ticking through the cycles, the data is already perfectly staged so that the "Temporal Switch" just has to flip back and forth to feed the Tensor Core its required values in the correct order.
 
-**Would you like to see how the Accumulator ($c\_frag$) layout relates to this, specifically how the results from Phase 1 and Phase 2 are summed together into the final FP32 registers?**
+### How the Accumulator ($c\_frag$) layout relates to this, specifically how the results from Phase 1 and Phase 2 are summed together into the final FP32 registers?**
+
+<TODO>
