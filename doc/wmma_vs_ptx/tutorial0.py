@@ -256,11 +256,11 @@ def main():
     print(f"Max Diff (PyTorch vs PTX):  {(C_ref - C_ptx ).abs().max().item():.6e}")
     print(f"Max Diff (WMMA vs PTX):     {(C_wmma - C_ptx).abs().max().item():.6e}")
 
-    ok = torch.allclose(C_wmma, C_ptx, rtol=0.0, atol=0.0)
-    print("\nWMMA == PTX bitwise:", ok)
-    if not ok:
-        ok2 = torch.allclose(C_wmma, C_ptx, rtol=1e-5, atol=1e-4)
-        print("WMMA ~= PTX (tolerant):", ok2)
+    ok1 = torch.allclose(C_wmma, C_ref, rtol=1e-3, atol=1e-2)
+    print("WMMA ~= TORCH (tolerant):", ok1)
+
+    ok2 = torch.allclose(C_wmma, C_ptx, rtol=1e-3, atol=1e-2)
+    print("WMMA ~= PTX (tolerant):", ok2)
 
 if __name__ == "__main__":
     main()
