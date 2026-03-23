@@ -18,6 +18,31 @@
 //         --kernel-name hgemm_raw_kernel --launch-skip 3 --launch-count 1 \
 //         -o /tmp/hgemm_profile python3 /tmp/profile_kernel.py
 
+/* 3-stage pipeline:
+Each stage is just one shared-memory slot big enough to hold:
+
+one 128 x 64 tile from A
+one 128 x 64 tile from B
+Iter      Compute from      Load into
+----      ------------      ---------
+warmup    none              stage 0 <- A0,B0
+warmup    none              stage 1 <- A1,B1
+0         stage 0           stage 2 <- A2,B2
+1         stage 1           stage 0 <- A3,B3
+2         stage 2           stage 1 <- A4,B4
+3         stage 0           stage 2 <- A5,B5
+4         stage 1           stage 0 <- A6,B6
+
+So the lifecycle of a stage is:
+
+1. load a future (A_i, B_i) pair into it
+2. wait until the async copy is complete
+3. use it for ldmatrix + mma.sync
+4. mark it reusable
+5. overwrite it with a later (A_j, B_j) pair
+That reuse is the whole point of the pipeline: only 3 shared-memory buffers are needed no matter how many K-slices the GEMM has.
+*/
+
 #include <cuda_fp16.h>
 #include <cstdint>
 
